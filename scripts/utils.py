@@ -2,6 +2,7 @@ from math import radians, cos, sin, asin, sqrt
 import os
 import time
 
+from pandas import HDFStore
 import pandas as pd
 from sklearn.cluster import KMeans
 
@@ -44,33 +45,6 @@ def create_distance_df(df):
 
     return pd.DataFrame.from_dict(dist_dict)
 
-def create_clustered_topology_df(topology_df, total_fogs, total_rrhs, save=False):
-
-    tmp_topology = topology_df.copy()
-    print("finding fogs clusters")
-    tmp_topology['cluster'], _ = find_clusters(tmp_topology, total_fogs)
-    fog_cluster, fog_centroids = generate_fogs(tmp_topology, total_fogs)
-
-    # marking which rrh belongs to each fog node
-    tmp_topology['rrh'] = fog_cluster
-
-    if save:
-        save_df(tmp_topology, "topology_data_with_clusters.csv")
-
-    clustered_topology = pd.DataFrame(columns=["bs", "lat", "lon"])
-    for clusters in tmp_topology.groupby(['cluster']).mean().iterrows():
-        clustered_topology = clustered_topology.append(
-                {'bs': f'fog_{clusters[0]}',
-                'lat': clusters[1]['lat'],
-                'lon': clusters[1]['lon']}, ignore_index=True)
-
-    for clusters in tmp_topology.groupby(['cluster', 'rrh']).mean().iterrows():
-         clustered_topology = clustered_topology.append(
-                 {'bs': f'rrh_{clusters[0][0]}_{clusters[0][1]}',
-                     'lat': clusters[1]['lat'],
-                     'lon': clusters[1]['lon']}, ignore_index=True)
-    return clustered_topology, tmp_topology
-
 
 def generate_fogs(df, total_fogs):
 
@@ -86,13 +60,13 @@ def generate_fogs(df, total_fogs):
 
     return clusters, centroids
 
-def save_df(df, name):
+def save_df(df, filename):
 
     basepath = '/home/giovana/Documentos/personal/city-cellular-traffic-map/data'
     t = time.localtime()
     timestamp = time.strftime("%d-%m_%H-%M", t)
 
-    filename = f"{name}_{timestamp}"
+    # filename = f"{name}_{timestamp}"
 
     df.to_csv(os.path.join(basepath, filename), index=False)
     print(f"dataframe saved in {os.path.join(basepath, filename)}")
@@ -113,16 +87,23 @@ def load_data():
 
     return cellular_traffic_data, topology_data
 
+def load_clustered_data():
+    basepath = '/home/giovana/Documentos/personal/city-cellular-traffic-map/data'
+
+    cellular_traffic_data = pd.read_csv(os.path.join(basepath, 'clustered_traffic.csv'),
+            delimiter = ',', decimal='.')
+    topology_data = pd.read_csv(os.path.join(basepath, 'clustered_topology.csv'), delimiter = ',', decimal='.')
+
+    return cellular_traffic_data, topology_data
 
 def create_clustered_cellular_df(cellular_traffic_data, topology_data, total_fog, total_rrh, save = False):
 
     tmp = topology_data[['bs', 'cluster', 'rrh']]
     merged_data = cellular_traffic_data.copy()
 
+    print("merging dataframes")
     merged_data = pd.merge(merged_data, tmp, on='bs', right_index=False, how='left', sort=False)
 
-    if save:
-        save_df(merged_data, "cellular_traffic_with_cluster.csv")
 
     cluster_traffic_data = pd.DataFrame(columns=["bs", 'time_hour', 'users', 'packets', 'bytes'])
 
@@ -131,6 +112,57 @@ def create_clustered_cellular_df(cellular_traffic_data, topology_data, total_fog
              'bs': f'rrh_{clusters[0][0]}_{clusters[0][1]}',
              'time_hour': clusters[0][2], 'users': clusters[1]['users'],
              'packets': clusters[1]['packets'], 'bytes': clusters[1]['bytes']}, ignore_index=True)
+    if save:
+        save_df(merged_data, "cellular_traffic_with_cluster_info.csv")
+        save_df(cluster_traffic_data, "clustered_traffic.csv")
 
     return cluster_traffic_data, merged_data
+
+def create_clustered_topology_df(topology_df, total_fogs, total_rrhs, save=False):
+
+    tmp_topology = topology_df.copy()
+    print("finding fogs clusters")
+    tmp_topology['cluster'], _ = find_clusters(tmp_topology, total_fogs)
+    fog_cluster, fog_centroids = generate_fogs(tmp_topology, total_fogs)
+
+    # marking which rrh belongs to each fog node
+    tmp_topology['rrh'] = fog_cluster
+
+
+    clustered_topology = pd.DataFrame(columns=["bs", "lat", "lon"])
+    for clusters in tmp_topology.groupby(['cluster']).mean().iterrows():
+        clustered_topology = clustered_topology.append(
+                {'bs': f'fog_{clusters[0]}',
+                'lat': clusters[1]['lat'],
+                'lon': clusters[1]['lon']}, ignore_index=True)
+
+    for clusters in tmp_topology.groupby(['cluster', 'rrh']).mean().iterrows():
+         clustered_topology = clustered_topology.append(
+                 {'bs': f'rrh_{clusters[0][0]}_{clusters[0][1]}',
+                     'lat': clusters[1]['lat'],
+                     'lon': clusters[1]['lon']}, ignore_index=True)
+
+    if save:
+        save_df(tmp_topology, "topology_with_clusters_and_rrhs_info.csv")
+        save_df(clustered_topology, "clustered_topology.csv")
+
+    return clustered_topology, tmp_topology
+
+def correct_time_field(df):
+
+    correct_df = df.copy()
+    correct_df['time_hour'] = correct_df['time_hour'].map(
+            lambda x: pd.Timestamp(x, unit='s', tz='Asia/Shanghai'))
+    correct_df['hour'] = correct_df['time_hour'].map(lambda x: x.hour)
+    correct_df['day'] = correct_df['time_hour'].map(lambda x: x.day)
+
+    return df
+
+def generate_hd5_file(pivot_df, name):
+
+    store = HDFStore(f"data/{name}.h5")
+    store.put(name, pivot_df, format='table', data_columns=True)
+    store.close()
+
+
 
