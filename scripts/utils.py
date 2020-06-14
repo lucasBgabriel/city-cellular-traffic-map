@@ -69,7 +69,7 @@ def create_clustered_topology_df(topology_df, total_fogs, total_rrhs, save=False
                  {'bs': f'rrh_{clusters[0][0]}_{clusters[0][1]}',
                      'lat': clusters[1]['lat'],
                      'lon': clusters[1]['lon']}, ignore_index=True)
-    return clustered_topology
+    return clustered_topology, tmp_topology
 
 
 def generate_fogs(df, total_fogs):
@@ -112,4 +112,25 @@ def load_data():
     topology_data = pd.read_csv(os.path.join(basepath, 'topology.csv'), delimiter = ',', decimal='.')
 
     return cellular_traffic_data, topology_data
+
+
+def create_clustered_cellular_df(cellular_traffic_data, topology_data, total_fog, total_rrh, save = False):
+
+    tmp = topology_data[['bs', 'cluster', 'rrh']]
+    merged_data = cellular_traffic_data.copy()
+
+    merged_data = pd.merge(merged_data, tmp, on='bs', right_index=False, how='left', sort=False)
+
+    if save:
+        save_df(merged_data, "cellular_traffic_with_cluster.csv")
+
+    cluster_traffic_data = pd.DataFrame(columns=["bs", 'time_hour', 'users', 'packets', 'bytes'])
+
+    for clusters in merged_data.groupby(['cluster', 'rrh', 'time_hour']).sum().iterrows():
+         cluster_traffic_data = cluster_traffic_data.append({
+             'bs': f'rrh_{clusters[0][0]}_{clusters[0][1]}',
+             'time_hour': clusters[0][2], 'users': clusters[1]['users'],
+             'packets': clusters[1]['packets'], 'bytes': clusters[1]['bytes']}, ignore_index=True)
+
+    return cluster_traffic_data, merged_data
 
