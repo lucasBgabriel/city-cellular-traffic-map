@@ -1,6 +1,11 @@
 from math import radians, cos, sin, asin, sqrt
+import os
+import time
 
 import pandas as pd
+from sklearn.cluster import KMeans
+
+# import clusters
 
 def haversine(lon1, lat1, lon2, lat2):
     """
@@ -18,7 +23,11 @@ def haversine(lon1, lat1, lon2, lat2):
     r = 6371 # Radius of earth in kilometers. Use 3956 for miles
     return c * r
 
-def create_dist_matrix(df):
+
+def create_distance_df(df):
+    """
+    :params: df : dataframe with base station id, lat and lon
+    """
     df.reset_index(drop=True, inplace=True)
 
     dist_dict = {"from": [], "to": [], "distance": []}
@@ -33,7 +42,74 @@ def create_dist_matrix(df):
             dist_dict["to"].append(bs_to)
             dist_dict["distance"].append(haversine(lon_i, lat_i, lon_j, lat_j))
 
-
     return pd.DataFrame.from_dict(dist_dict)
 
+def create_clustered_topology_df(topology_df, total_fogs, total_rrhs, save=False):
+
+    tmp_topology = topology_df.copy()
+    print("finding fogs clusters")
+    tmp_topology['cluster'], _ = find_clusters(tmp_topology, total_fogs)
+    fog_cluster, fog_centroids = generate_fogs(tmp_topology, total_fogs)
+
+    # marking which rrh belongs to each fog node
+    tmp_topology['rrh'] = fog_cluster
+
+    if save:
+        save_df(tmp_topology, "topology_data_with_clusters.csv")
+
+    clustered_topology = pd.DataFrame(columns=["bs", "lat", "lon"])
+    for clusters in tmp_topology.groupby(['cluster']).mean().iterrows():
+        clustered_topology = clustered_topology.append(
+                {'bs': f'fog_{clusters[0]}',
+                'lat': clusters[1]['lat'],
+                'lon': clusters[1]['lon']}, ignore_index=True)
+
+    for clusters in tmp_topology.groupby(['cluster', 'rrh']).mean().iterrows():
+         clustered_topology = clustered_topology.append(
+                 {'bs': f'rrh_{clusters[0][0]}_{clusters[0][1]}',
+                     'lat': clusters[1]['lat'],
+                     'lon': clusters[1]['lon']}, ignore_index=True)
+    return clustered_topology
+
+
+def generate_fogs(df, total_fogs):
+
+    print("generating fogs")
+    clusters = []
+    centroids = {}
+
+    for i in range(0, total_fogs):
+        cluster_i = df[df["cluster"] == i]
+        x, c = find_clusters(cluster_i, 3)
+        clusters.extend(x)
+        centroids[i] = c
+
+    return clusters, centroids
+
+def save_df(df, name):
+
+    basepath = '/home/giovana/Documentos/personal/city-cellular-traffic-map/data'
+    t = time.localtime()
+    timestamp = time.strftime("%d-%m_%H-%M", t)
+
+    filename = f"{name}_{timestamp}"
+
+    df.to_csv(os.path.join(basepath, filename), index=False)
+    print(f"dataframe saved in {os.path.join(basepath, filename)}")
+
+
+def find_clusters(data, k):
+
+    mat = data[['lon', 'lat']]
+    kmeans = KMeans(n_clusters = k, random_state = 0).fit(mat)
+    return kmeans.labels_, kmeans.cluster_centers_
+
+def load_data():
+
+    basepath = '/home/giovana/Documentos/personal/city-cellular-traffic-map/traceset'
+    cellular_traffic_data = pd.read_csv(os.path.join(basepath, 'cellular_traffic.csv'),
+            delimiter = ',', decimal='.')
+    topology_data = pd.read_csv(os.path.join(basepath, 'topology.csv'), delimiter = ',', decimal='.')
+
+    return cellular_traffic_data, topology_data
 
