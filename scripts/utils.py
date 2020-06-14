@@ -107,11 +107,22 @@ def create_clustered_cellular_df(cellular_traffic_data, topology_data, total_fog
 
     cluster_traffic_data = pd.DataFrame(columns=["bs", 'time_hour', 'users', 'packets', 'bytes'])
 
+    for clusters in cellular_traffic_data.groupby(['cluster', 'time_hour']).sum().iterrows():
+         cluster_traffic_data = cluster_traffic_data.append({
+             'bs': f'fog_{clusters[0][0]}',
+             'time_hour': clusters[0][1],
+             'users': clusters[1]['users'],
+             'packets': clusters[1]['packets'],
+             'bytes': clusters[1]['bytes']},
+             ignore_index=True)
+
     for clusters in merged_data.groupby(['cluster', 'rrh', 'time_hour']).sum().iterrows():
          cluster_traffic_data = cluster_traffic_data.append({
              'bs': f'rrh_{clusters[0][0]}_{clusters[0][1]}',
-             'time_hour': clusters[0][2], 'users': clusters[1]['users'],
-             'packets': clusters[1]['packets'], 'bytes': clusters[1]['bytes']}, ignore_index=True)
+             'time_hour': clusters[0][2],
+             'users': clusters[1]['users'],
+             'packets': clusters[1]['packets'],
+             'bytes': clusters[1]['bytes']}, ignore_index=True)
     if save:
         save_df(merged_data, "cellular_traffic_with_cluster_info.csv")
         save_df(cluster_traffic_data, "clustered_traffic.csv")

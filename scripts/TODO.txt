@@ -1,0 +1,13 @@
+TODO:
+
+- [x] montar funções com os arquivos de fog e rrhs agrupados
+- [x] criar arquivo de topologia
+- [x] criar função pra salvar arquivos csv
+- [x] modificar o df pra ficar no mesmo formato do DCRNN
+- [ ] aplicar arquivos no DCRNN
+- [ ] validar métricas
+- [ ] validar funcionamento
+- [ ] escrever o artigo
+- [ ] LSTM pra validar o método
+- [ ] refatorar código todo
+- [ ]
